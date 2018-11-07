@@ -13,7 +13,7 @@ import (
 	"os/exec"
 	"time"
 
-	etcd "github.com/coreos/etcd/client"
+	etcd "go.etcd.io/etcd/client"
 	"golang.org/x/net/context"
 )
 

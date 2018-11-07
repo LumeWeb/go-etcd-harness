@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	etcd "github.com/coreos/etcd/client"
-	"github.com/mwitkow/go-etcd-harness"
+	etcd "go.etcd.io/etcd/client"
+	"github.com/chen-anders/go-etcd-harness"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
