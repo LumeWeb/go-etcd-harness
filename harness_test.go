@@ -1,6 +1,3 @@
-// Copyright 2016 Michal Witkowski. All Rights Reserved.
-// See LICENSE for licensing terms covering this software.
-
 package etcd_harness_test
 
 import (
@@ -18,20 +15,20 @@ import (
 
 type HarnessTestSuite struct {
 	suite.Suite
-	keys etcd.KeysAPI
+	kv etcd.KV
 }
 
 func (s *HarnessTestSuite) SetupSuite() {
-	_, err := s.keys.Set(newContext(), "/testdir2", "", &etcd.SetOptions{Dir: true})
+	_, err := s.kv.Put(newContext(), "/testdir2", "", etcd.WithPrevKV())
 	require.NoError(s.T(), err, "creating the test directory must never fail.")
 }
 
 func (s *HarnessTestSuite) TestReadWrite() {
-	_, err := s.keys.Set(newContext(), "/testdir/somevalue", "SomeContent", &etcd.SetOptions{})
+	_, err := s.kv.Put(newContext(), "/testdir/somevalue", "SomeContent")
 	require.NoError(s.T(), err, "set must succeed")
-	resp, err := s.keys.Get(newContext(), "/testdir/somevalue", &etcd.GetOptions{})
+	resp, err := s.kv.Get(newContext(), "/testdir/somevalue")
 	require.NoError(s.T(), err, "get must succeed")
-	assert.Equal(s.T(), "SomeContent", resp.Node.Value)
+	assert.Equal(s.T(), "SomeContent", string(resp.Kvs[0].Value))
 }
 
 func TestHarnessTestSuite(t *testing.T) {
@@ -51,7 +48,7 @@ func TestHarnessTestSuite(t *testing.T) {
 		harness.Stop()
 		t.Logf("cleaned up etcd harness")
 	}()
-	suite.Run(t, &HarnessTestSuite{keys: etcd.NewKeysAPI(harness.Client)})
+	suite.Run(t, &HarnessTestSuite{kv: etcd.NewKV(harness.Client)})
 }
 
 func newContext() context.Context {

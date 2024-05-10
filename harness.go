@@ -7,7 +7,6 @@ package etcd_harness
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -22,7 +21,7 @@ type Harness struct {
 	errWriter  io.Writer
 	etcdServer *exec.Cmd
 	etcdDir    string
-	Client     etcd.Client
+	Client     *etcd.Client
 	Endpoint   string
 }
 
@@ -48,7 +47,7 @@ func New(etcdErrWriter io.Writer) (*Harness, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.etcdDir, err = ioutil.TempDir("/tmp", "etcd_testserver")
+	s.etcdDir, err = os.MkdirTemp("/tmp", "etcd_testserver")
 	if err != nil {
 		return nil, fmt.Errorf("failed allocating new dir: %v", err)
 	}
@@ -65,17 +64,18 @@ func New(etcdErrWriter io.Writer) (*Harness, error) {
 		"--advertise-client-urls="+endpoint,
 		"--listen-client-urls="+endpoint)
 	s.etcdServer.Stderr = s.errWriter
-	s.etcdServer.Stdout = ioutil.Discard
+	s.etcdServer.Stdout = io.Discard
 	s.Endpoint = endpoint
 	if err := s.etcdServer.Start(); err != nil {
 		s.Stop()
 		return nil, fmt.Errorf("cannot start etcd: %v, will clean up", err)
 	}
-	s.Client, err = etcd.New(etcd.Config{Endpoints: []string{endpoint}})
+	client, err := etcd.New(etcd.Config{Endpoints: []string{endpoint}})
 	if err != nil {
 		s.Stop()
 		return s, fmt.Errorf("failed allocating client: %v, will clean up", err)
 	}
+	s.Client = client
 	if err := s.pollEtcdForReadiness(); err != nil {
 		s.Stop()
 		return nil, fmt.Errorf("%v, will clean up", err)
@@ -84,12 +84,11 @@ func New(etcdErrWriter io.Writer) (*Harness, error) {
 }
 
 func (s *Harness) pollEtcdForReadiness() error {
-	api := etcd.NewKeysAPI(s.Client)
 	// Actively poll for etcd coming up for 3 seconds every 50 milliseconds.
 	for i := 0; i < 20; i++ {
 		until := time.Now().Add(200 * time.Millisecond)
 		ctx, _ := context.WithDeadline(context.TODO(), until)
-		_, err := api.Get(ctx, "/", &etcd.GetOptions{})
+		_, err := s.Client.KV.Get(ctx, "/")
 		if err == nil {
 			return nil
 		}
@@ -109,7 +108,10 @@ func (s *Harness) Stop() {
 			fmt.Printf("failed killing etcd process: %v", err)
 		}
 		// Just to make sure we actually finish it before continuing.
-		s.etcdServer.Wait()
+		err := s.etcdServer.Wait()
+		if err != nil {
+			fmt.Printf("failed waiting for etcd process: %v", err)
+		}
 	}
 	if s.etcdDir != "" {
 		if err = os.RemoveAll(s.etcdDir); err != nil {
@@ -123,6 +125,11 @@ func allocateLocalAddress() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer l.Close()
+	defer func(l net.Listener) {
+		err := l.Close()
+		if err != nil {
+			fmt.Printf("failed closing listener: %v", err)
+		}
+	}(l)
 	return l.Addr().String(), nil
 }
